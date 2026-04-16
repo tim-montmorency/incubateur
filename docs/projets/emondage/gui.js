@@ -23,6 +23,7 @@ export class GUI {
     this._createInfoPanel();
     this._createSliders();
     this._createButtons();
+    this._createFeedbackPanel();
     this._setupMouseControls();
     this._setupScrollControls();
   }
@@ -57,59 +58,65 @@ export class GUI {
     info.id = "info";
     info.style.cssText = `
       position: fixed;
-      top: 10px;
-      left: 10px;
+      top: 75px;
+      left: 50%;
+      transform: translateX(-50%);
       color: #ffffff;
       background: rgba(0, 0, 0, 0.7);
-      padding: 20px;
+      padding: 15px 25px;
       border-radius: 5px;
       font-size: 15px;
       z-index: 50;
-      max-width: 350px;
       font-family: Arial, sans-serif;
     `;
     info.innerHTML = `
-      <h3 style="margin: 0 0 12px 0; font-size: 18px;">Démo Interaction Arbre</h3>
-      <p style="margin: 8px 0; line-height: 1.5;"><strong>Contrôles:</strong></p>
-      <p style="margin: 8px 0; line-height: 1.5;">🖱️ Survolez les branches pour les mettre en évidence</p>
-      <p style="margin: 8px 0; line-height: 1.5;">🖱️ Cliquez sur une branche pour la sélectionner</p>
-      <p style="margin: 8px 0; line-height: 1.5;">🖱️ Clic du milieu pour déplacer la caméra</p>
-      <p style="margin: 8px 0; line-height: 1.5;">🖱️ Molette pour zoomer</p>
+      <h3 style="margin: 0 0 10px 0; font-size: 18px; text-align: center;">Démo Interaction Arbre</h3>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px 30px;">
+        <p style="margin: 4px 0; line-height: 1.5;">🖱️ Survolez pour mettre en évidence</p>
+        <p style="margin: 4px 0; line-height: 1.5;">🖱️ Cliquez pour sélectionner</p>
+        <p style="margin: 4px 0; line-height: 1.5;">🖱️ Clic du milieu pour la caméra</p>
+        <p style="margin: 4px 0; line-height: 1.5;">🖱️ Molette pour zoomer</p>
+      </div>
     `;
     document.body.appendChild(info);
   }
 
   // --- Glissières ---
   _createSliders() {
-    this.sliderDefs.forEach((sliderDef, index) => {
-      const container = document.createElement("div");
-      container.style.cssText = `
-        position: fixed;
-        right: ${this.baseRight}px;
-        top: ${this.baseTop + index * (this.sliderHeight + this.gap)}px;
-        width: 320px;
-        background: rgba(15, 15, 15, 0.9);
-        border: 1px solid rgba(255, 255, 255, 0.15);
-        border-radius: 8px;
-        padding: 16px 18px;
-        backdrop-filter: blur(10px);
-        z-index: 1000;
-      `;
+    const panelStyle = `
+      background: rgba(15, 15, 15, 0.9);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 8px;
+      padding: 16px 18px;
+      backdrop-filter: blur(10px);
+      z-index: 1000;
+      position: fixed;
+    `;
+    const labelStyle = `
+      display: block;
+      color: #ffffff;
+      font-weight: 600;
+      font-size: 13px;
+      margin-bottom: 10px;
+      font-family: Arial, sans-serif;
+      text-align: center;
+    `;
+    const inputStyle = `
+      height: 4px;
+      accent-color: #ffffff;
+      cursor: pointer;
+      display: block;
+    `;
 
-      const label = document.createElement("label");
-      label.textContent = sliderDef.label;
-      label.style.cssText = `
-        display: block;
-        color: #ffffff;
-        font-weight: 600;
-        font-size: 13px;
-        margin-bottom: 10px;
-        font-family: Arial, sans-serif;
-      `;
-
+    this.sliderDefs.forEach((sliderDef) => {
       const lo = Math.min(sliderDef.min, sliderDef.max);
       const hi = Math.max(sliderDef.min, sliderDef.max);
       const inverted = sliderDef.min > sliderDef.max;
+
+      const container = document.createElement("div");
+      const label = document.createElement("label");
+      label.textContent = sliderDef.label;
+      label.style.cssText = labelStyle;
 
       const sliderInput = document.createElement("input");
       sliderInput.type = "range";
@@ -117,13 +124,6 @@ export class GUI {
       sliderInput.max = hi;
       sliderInput.step = sliderDef.key === "distance" ? 0.1 : 0.01;
       sliderInput.value = inverted ? hi + lo - this.orbitController[sliderDef.key] : this.orbitController[sliderDef.key];
-      sliderInput.style.cssText = `
-        width: 100%;
-        height: 4px;
-        accent-color: #ffffff;
-        cursor: pointer;
-        display: block;
-      `;
 
       // La glissière est le SEUL endroit qui met à jour orbitController
       sliderInput.addEventListener("input", (e) => {
@@ -134,6 +134,63 @@ export class GUI {
 
       this.sliderRefs[sliderDef.key] = sliderInput;
 
+      if (sliderDef.key === "rotation") {
+        // Bas au centre, horizontal
+        container.style.cssText =
+          panelStyle +
+          `
+          bottom: 20px;
+          left: 50%;
+          transform: translateX(-50%);
+          width: 400px;
+        `;
+        sliderInput.style.cssText = inputStyle + `width: 100%;`;
+      } else if (sliderDef.key === "height") {
+        // Droite, vertical
+        container.style.cssText =
+          panelStyle +
+          `
+          right: 20px;
+          top: 50%;
+          transform: translateY(-50%);
+          width: 60px;
+          height: 300px;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+        `;
+        sliderInput.style.cssText =
+          inputStyle +
+          `
+          width: 250px;
+          transform: rotate(-90deg);
+          transform-origin: center center;
+          margin-top: 130px;
+        `;
+      } else if (sliderDef.key === "distance") {
+        // Gauche, vertical
+        container.style.cssText =
+          panelStyle +
+          `
+          left: 20px;
+          top: 50%;
+          transform: translateY(-50%);
+          width: 60px;
+          height: 300px;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+        `;
+        sliderInput.style.cssText =
+          inputStyle +
+          `
+          width: 250px;
+          transform: rotate(-90deg);
+          transform-origin: center center;
+          margin-top: 130px;
+        `;
+      }
+
       container.appendChild(label);
       container.appendChild(sliderInput);
       document.body.appendChild(container);
@@ -142,37 +199,86 @@ export class GUI {
 
   // --- Boutons ---
   _createButtons() {
-    const buttonsStartTop = this.baseTop + this.sliderDefs.length * (this.sliderHeight + this.gap) + this.gap;
+    // Conteneur des 3 boutons en haut au centre
+    const topBar = document.createElement("div");
+    topBar.style.cssText = `
+      position: fixed;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: ${this.gap}px;
+      z-index: 1000;
+    `;
 
     // Réinitialiser la caméra
-    this._createButton("Reset Caméra", buttonsStartTop, () => {
+    this._createButton("Reset Caméra", topBar, () => {
       this.updateSlider("rotation", 0);
       this.updateSlider("height", Math.PI / 2);
       this.updateSlider("distance", 3);
     });
 
     // Couper la branche sélectionnée
-    this.cutButton = this._createButton("Couper la branche", buttonsStartTop + 50 + this.gap, () => {
+    this.cutButton = this._createButton("Couper la branche", topBar, () => {
       if (this.onCutBranch) this.onCutBranch();
     });
 
     // Rétablir toutes les branches
-    this.restoreButton = this._createButton("Rétablir les branches", buttonsStartTop + 2 * (50 + this.gap), () => {
+    this.restoreButton = this._createButton("Rétablir les branches", topBar, () => {
       if (this.onRestoreBranches) this.onRestoreBranches();
     });
 
-    this.buttonCount = 3;
+    document.body.appendChild(topBar);
+
+    // Valider — en bas à droite
+    this._validated = false;
+    const validateContainer = document.createElement("div");
+    validateContainer.style.cssText = `
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      z-index: 1000;
+    `;
+    this.validateButton = this._createButton("Valider", validateContainer, () => {
+      if (!this._validated) {
+        // Mode Valider
+        if (this.onValidate) this.onValidate();
+        this._validated = true;
+        this.validateButton.textContent = "Recommencer";
+        this._setButtonEnabled(this.cutButton, false);
+        this._setButtonEnabled(this.restoreButton, false);
+      } else {
+        // Mode Recommencer
+        if (this.onRestart) this.onRestart();
+        this.hideFeedback();
+        this._validated = false;
+        this.validateButton.textContent = "Valider";
+        this._setButtonEnabled(this.cutButton, true);
+        this._setButtonEnabled(this.restoreButton, true);
+      }
+    });
+    document.body.appendChild(validateContainer);
   }
 
-  _createButton(text, top, onClick) {
+  _setButtonEnabled(btn, enabled) {
+    if (enabled) {
+      btn.disabled = false;
+      btn.style.opacity = "1";
+      btn.style.pointerEvents = "auto";
+    } else {
+      btn.disabled = true;
+      btn.style.opacity = "0.4";
+      btn.style.pointerEvents = "none";
+    }
+  }
+
+  _createButton(text, parent, onClick) {
     const btn = document.createElement("button");
     btn.textContent = text;
     btn.style.cssText = `
-      position: fixed;
-      right: ${this.baseRight}px;
-      top: ${top}px;
-      width: 320px;
-      padding: 14px 18px;
+      padding: 14px 24px;
+      width: 200px;
+      text-align: center;
       background: rgba(15, 15, 15, 0.9);
       border: 1px solid rgba(255, 255, 255, 0.15);
       border-radius: 8px;
@@ -182,7 +288,7 @@ export class GUI {
       font-size: 14px;
       font-family: Arial, sans-serif;
       transition: background 0.2s ease, border-color 0.2s ease;
-      z-index: 1000;
+      white-space: nowrap;
     `;
     btn.addEventListener("mouseenter", () => {
       btn.style.background = "rgba(255, 255, 255, 0.1)";
@@ -193,8 +299,102 @@ export class GUI {
       btn.style.borderColor = "rgba(255, 255, 255, 0.15)";
     });
     btn.addEventListener("click", onClick);
-    document.body.appendChild(btn);
+    parent.appendChild(btn);
     return btn;
+  }
+
+  // --- Correspondance tag → libellé lisible ---
+  _tagToLabel(tag) {
+    const labels = {
+      interférente: "Branche interférente",
+      concurrente: "Branche concurrente",
+      aigue: "Branche angle aigu",
+      rejet: "Rejet",
+      malade: "Branche malade",
+      brisée: "Branche brisée",
+      distribution: "Branche mal répartie",
+      couronne: "Branche couronne",
+      débordante: "Branche débordante",
+      temporaire: "Branche temporaire",
+    };
+    return labels[tag] || tag || "Branche inconnue";
+  }
+
+  // --- Panneau de rétroaction (bottom-left, caché par défaut) ---
+  _createFeedbackPanel() {
+    this.feedbackPanel = document.createElement("div");
+    this.feedbackPanel.style.cssText = `
+      position: fixed;
+      bottom: 20px;
+      left: 100px;
+      max-width: 400px;
+      max-height: 60vh;
+      overflow-y: auto;
+      color: #ffffff;
+      background: rgba(0, 0, 0, 0.85);
+      padding: 20px 25px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-family: Arial, sans-serif;
+      z-index: 1000;
+      display: none;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      backdrop-filter: blur(10px);
+    `;
+    document.body.appendChild(this.feedbackPanel);
+  }
+
+  // --- Afficher le résultat de la validation ---
+  showFeedback({ cut, missed, wrongCutCount }) {
+    let html = "";
+
+    const correctCuts = cut.filter((b) => b.isBad);
+    const hasWrongCuts = wrongCutCount > 0;
+    const allFound = missed.length === 0 && correctCuts.length > 0 && !hasWrongCuts;
+
+    if (allFound) {
+      html += `<h3 style="margin: 0 0 10px 0; color: #00ff88;">🎉 Félicitations, vous les avez toutes trouvées !</h3>`;
+      html += `<p style="margin: 0 0 6px 0; color: #aaa;">Branches retirées :</p>`;
+      html += `<ul style="margin: 0 0 0 16px; padding: 0;">`;
+      for (const b of correctCuts) {
+        html += `<li style="margin: 2px 0; color: #00ff88;">${this._tagToLabel(b.tag)}</li>`;
+      }
+      html += `</ul>`;
+    } else {
+      if (correctCuts.length > 0) {
+        html += `<p style="margin: 0 0 6px 0; color: #00cc66; font-weight: 600;">✅ Vous avez correctement retiré :</p>`;
+        html += `<ul style="margin: 0 0 14px 16px; padding: 0;">`;
+        for (const b of correctCuts) {
+          html += `<li style="margin: 2px 0; color: #00cc66;">${this._tagToLabel(b.tag)}</li>`;
+        }
+        html += `</ul>`;
+      }
+
+      if (missed.length > 0) {
+        html += `<p style="margin: 0 0 6px 0; color: #ff6666; font-weight: 600;">❌ Vous avez manqué ${missed.length} branche${missed.length > 1 ? "s" : ""} :</p>`;
+        html += `<ul style="margin: 0 0 14px 16px; padding: 0;">`;
+        for (const b of missed) {
+          html += `<li style="margin: 2px 0; color: #ff6666;">${this._tagToLabel(b.tag)}</li>`;
+        }
+        html += `</ul>`;
+      }
+
+      if (hasWrongCuts) {
+        html += `<p style="margin: 0 0 6px 0; color: #ffaa00; font-weight: 600;">⚠️ Vous avez coupé ${wrongCutCount} branche${wrongCutCount > 1 ? "s" : ""} qui n'aurai${wrongCutCount > 1 ? "ent" : "t"} pas dû être coupée${wrongCutCount > 1 ? "s" : ""}.</p>`;
+      }
+
+      if (correctCuts.length === 0 && missed.length === 0 && !hasWrongCuts) {
+        html += `<p style="margin: 0; color: #aaa;">Aucune branche n'a été coupée.</p>`;
+      }
+    }
+
+    this.feedbackPanel.innerHTML = html;
+    this.feedbackPanel.style.display = "block";
+  }
+
+  // --- Cacher le panneau de rétroaction ---
+  hideFeedback() {
+    this.feedbackPanel.style.display = "none";
   }
 
   // --- Glisser avec le bouton du milieu (style Blender) ---
