@@ -2,12 +2,20 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { OrbitController } from "./OrbitController.js";
-import { GUI } from "./gui.js";
-import { createFloor } from "./floor.js";
+import { Ui } from "./Ui.js";
+import { createGround } from "./ground.js";
 import { createSky } from "./sky.js";
 import { addPersonSilhouette } from "./addPersonSilhouette.js";
 import { TreeInteraction } from "./TreeInteraction.js";
 import { createLighting } from "./lighting.js";
+import { Wind } from "./wind.js";
+import { Grass } from "./grass.js";
+import { createRocks } from "./rocks.js";
+import Stats from "stats";
+
+  const stats = new Stats();
+  stats.showPanel(0); // 0: FPS, 1: ms/frame, 2: memory
+  document.body.appendChild(stats.dom);
 
 // Scène
 const scene = new THREE.Scene();
@@ -15,7 +23,7 @@ scene.fog = new THREE.Fog(0x6496d2, 15, 80);
 const skyMaterial = createSky(scene);
 
 // Caméra
-const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1000);
 
 // Contrôleur d'orbite
 const orbitController = new OrbitController(camera, {
@@ -41,8 +49,11 @@ document.body.appendChild(renderer.domElement);
 // Éclairage
 createLighting(scene);
 
+// Vent
+const wind = new Wind();
+
 // GUI (gère toute l'interface : glissières, boutons, panneau d'info, contrôles souris/molette)
-const gui = new GUI(orbitController, renderer.domElement);
+const ui = new Ui(orbitController, renderer.domElement);
 
 // Charger le modèle d'arbre
 const loader = new GLTFLoader();
@@ -53,29 +64,67 @@ loader.load(
     tree.position.y = 0;
     tree.scale.setScalar(0.7);
     tree.traverse((child) => {
-      if (child.isMesh) child.castShadow = true;
+      if (child.isMesh) {
+        child.castShadow = true;
+        child.receiveShadow = true;
+
+        // Normal map un peu plus forte que dans le modèle original pour mieux ressortir les détails sur les branches coupées
+        if (child.material?.normalMap) {
+          child.material.normalScale.set(1.8, 1.8);
+          child.material.needsUpdate = true;
+        }
+      }
     });
     scene.add(tree);
 
     orbitController.centerOn(tree);
 
-    scene.add(createFloor());
+    scene.add(createGround());
+    // Add grass and keep reference for toggling
+    let grass = new Grass(wind);
+    scene.add(grass.mesh);
+    const rocks = createRocks();
+    scene.add(rocks);
     addPersonSilhouette(scene);
 
     // Interaction avec l'arbre (gère le raycasting, la sélection, couper/rétablir)
     const treeInteraction = new TreeInteraction(scene, camera, tree);
 
     // Connecter les boutons du GUI à l'interaction de l'arbre
-    gui.onCutBranch = () => treeInteraction.cutSelected();
-    gui.onRestoreBranches = () => {
-      treeInteraction.restoreAll();
+    ui.onCutBranch = () => {
+      treeInteraction.cutSelected();
+      ui.setRestoreEnabled(true);
     };
-    gui.onValidate = () => {
+    ui.onRestoreBranches = () => {
+      treeInteraction.restoreAll();
+      ui.setRestoreEnabled(false);
+    };
+    ui.onValidate = () => {
       const results = treeInteraction.validate();
-      gui.showFeedback(results);
+      ui.showFeedback(results);
     };
-    gui.onRestart = () => {
+    ui.onRestart = () => {
       treeInteraction.restoreAll();
+      ui.setRestoreEnabled(false);
+    };
+    treeInteraction.onSelectionChange = (count) => ui.setCutEnabled(count > 0);
+
+    // Toggle grass and rocks presence in the scene
+    ui.onToggleGrass = (enabled) => {
+      if (grass) {
+        if (enabled) {
+          grass.activate(scene);
+        } else {
+          grass.deactivate();
+        }
+      }
+      if (rocks) {
+        if (enabled && !scene.children.includes(rocks)) {
+          scene.add(rocks);
+        } else if (!enabled && scene.children.includes(rocks)) {
+          scene.remove(rocks);
+        }
+      }
     };
   },
   undefined,
@@ -83,9 +132,13 @@ loader.load(
 );
 
 // Boucle d'animation
+const clock = new THREE.Clock();
 function animate() {
+  stats.begin();
+  wind.update(clock.getDelta());
   orbitController.update();
   renderer.render(scene, camera);
+   stats.end();
 }
 renderer.setAnimationLoop(animate);
 
