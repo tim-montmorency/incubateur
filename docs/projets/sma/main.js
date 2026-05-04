@@ -1,21 +1,16 @@
 // main.js
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
-import { OrbitController } from "./OrbitController.js";
-import { Ui } from "./Ui.js";
-import { createGround } from "./ground.js";
-import { createSky } from "./sky.js";
-import { addPersonSilhouette } from "./addPersonSilhouette.js";
-import { TreeInteraction } from "./TreeInteraction.js";
-import { createLighting } from "./lighting.js";
-import { Wind } from "./wind.js";
-import { Grass } from "./grass.js";
-import { createRocks } from "./rocks.js";
-import Stats from "stats";
-
-const stats = new Stats();
-stats.showPanel(0); // 0: FPS, 1: ms/frame, 2: memory
-document.body.appendChild(stats.dom);
+import { OrbitController } from "./scripts/OrbitController.js";
+import { Ui } from "./scripts/Ui.js";
+import { createGround } from "./scripts/ground.js";
+import { createSky } from "./scripts/sky.js";
+import { addPersonSilhouette } from "./scripts/addPersonSilhouette.js";
+import { TreeInteraction } from "./scripts/TreeInteraction.js";
+import { createLighting } from "./scripts/lighting.js";
+import { Wind } from "./scripts/wind.js";
+import { Grass } from "./scripts/grass.js";
+import { createRocks } from "./scripts/rocks.js";
 
 // Scène
 const scene = new THREE.Scene();
@@ -52,93 +47,142 @@ createLighting(scene);
 // Vent
 const wind = new Wind();
 
+// Arbres disponibles
+const TREES = [
+  { id: 1, label: "Tree 1", model: "./models/Tree1.glb", scale: 0.7 },
+  { id: 2, label: "Actual Bad Tree", model: "./models/ActualBadTree.glb", scale: 0.7 },
+];
+
 // GUI (gère toute l'interface : glissières, boutons, panneau d'info, contrôles souris/molette)
-const ui = new Ui(orbitController, renderer.domElement);
+const ui = new Ui(orbitController, renderer.domElement, TREES);
+ui.onTreeSelect = (index) => loadTree(TREES[index]);
 
-// Charger le modèle d'arbre
+// État de la scène
 const loader = new GLTFLoader();
-loader.load(
-  "./Tree0.glb",
-  (gltf) => {
-    const tree = gltf.scene;
-    tree.position.y = 0;
-    tree.scale.setScalar(0.7);
-    tree.traverse((child) => {
-      if (child.isMesh) {
-        child.castShadow = true;
-        child.receiveShadow = true;
+let currentTree = null;
+let treeInteraction = null;
+let environmentLoaded = false;
+let grass = null;
+let rocks = null;
 
-        // Normal map un peu plus forte que dans le modèle original pour mieux ressortir les détails sur les branches coupées
-        if (child.material?.normalMap) {
-          child.material.normalScale.set(1.8, 1.8);
-          child.material.needsUpdate = true;
+function loadTree(config) {
+  // Réinitialiser l'état de l'UI
+  ui.resetExercise();
+
+  // Nettoyer l'ancienne interaction (retire les écouteurs d'événements)
+  if (treeInteraction) {
+    treeInteraction.destroy();
+    treeInteraction = null;
+  }
+
+  // Retirer l'arbre précédent
+  if (currentTree) {
+    scene.remove(currentTree);
+    currentTree = null;
+  }
+
+  loader.load(
+    config.model,
+    (gltf) => {
+      const tree = gltf.scene;
+      tree.position.y = 0;
+      tree.scale.setScalar(config.scale);
+      tree.traverse((child) => {
+        if (child.isMesh) {
+          child.castShadow = true;
+          child.receiveShadow = true;
+
+          // Normal map un peu plus forte que dans le modèle original pour mieux ressortir les détails sur les branches coupées
+          if (child.material?.normalMap) {
+            child.material.normalScale.set(1.8, 1.8);
+            child.material.needsUpdate = true;
+          }
         }
+      });
+      scene.add(tree);
+      currentTree = tree;
+
+      orbitController.centerOn(tree);
+
+      // Charger l'environnement une seule fois
+      if (!environmentLoaded) {
+        scene.add(createGround());
+        grass = new Grass(wind);
+        scene.add(grass.mesh);
+        rocks = createRocks();
+        scene.add(rocks);
+        addPersonSilhouette(scene);
+
+        // Connecter le toggle de l'herbe et des rochers (une seule fois)
+        ui.onToggleGrass = (enabled) => {
+          if (grass) {
+            if (enabled) {
+              grass.activate(scene);
+            } else {
+              grass.deactivate();
+            }
+          }
+          if (rocks) {
+            if (enabled && !scene.children.includes(rocks)) {
+              scene.add(rocks);
+            } else if (!enabled && scene.children.includes(rocks)) {
+              scene.remove(rocks);
+            }
+          }
+        };
+
+        environmentLoaded = true;
       }
-    });
-    scene.add(tree);
 
-    orbitController.centerOn(tree);
+      // Interaction avec l'arbre (gère le raycasting, la sélection, couper/rétablir)
+      treeInteraction = new TreeInteraction(scene, camera, tree);
 
-    scene.add(createGround());
-    // Add grass and keep reference for toggling
-    let grass = new Grass(wind);
-    scene.add(grass.mesh);
-    const rocks = createRocks();
-    scene.add(rocks);
-    addPersonSilhouette(scene);
+      // Connecter les boutons du GUI à l'interaction de l'arbre
+      ui.onCutBranch = () => {
+        treeInteraction.cutSelected();
+        ui.setRestoreEnabled(true);
+        ui.setValidateEnabled(true); // des branches ont été coupées -> on peut valider
+      };
+      ui.onRestoreBranches = () => {
+        treeInteraction.restoreAll();
+        ui.setRestoreEnabled(false);
+        // Après rétablissement, valider n'est possible que s'il reste des sélections
+        ui.setValidateEnabled(treeInteraction.selectedMeshes.size > 0);
+      };
+      ui.onValidate = () => {
+        const results = treeInteraction.validate();
+        ui.showFeedback(results);
+      };
+      ui.onRestart = () => {
+        treeInteraction.restoreAll();
+        ui.setRestoreEnabled(false);
+      };
+      treeInteraction.onSelectionChange = (count) => {
+        ui.setCutEnabled(count > 0);
+        // Permettre la validation si des branches sont sélectionnées OU déjà coupées
+        ui.setValidateEnabled(count > 0 || treeInteraction.cutBranches.length > 0);
+      };
+    },
+    undefined,
+    (e) => console.error(e),
+  );
+}
 
-    // Interaction avec l'arbre (gère le raycasting, la sélection, couper/rétablir)
-    const treeInteraction = new TreeInteraction(scene, camera, tree);
+// Prochain exercice : passe à l'arbre suivant dans la liste
+ui.onNextExercise = () => {
+  const nextIndex = (ui._activeTreeIndex + 1) % TREES.length;
+  ui._advanceToTree(nextIndex);
+};
 
-    // Connecter les boutons du GUI à l'interaction de l'arbre
-    ui.onCutBranch = () => {
-      treeInteraction.cutSelected();
-      ui.setRestoreEnabled(true);
-    };
-    ui.onRestoreBranches = () => {
-      treeInteraction.restoreAll();
-      ui.setRestoreEnabled(false);
-    };
-    ui.onValidate = () => {
-      const results = treeInteraction.validate();
-      ui.showFeedback(results);
-    };
-    ui.onRestart = () => {
-      treeInteraction.restoreAll();
-      ui.setRestoreEnabled(false);
-    };
-    treeInteraction.onSelectionChange = (count) => ui.setCutEnabled(count > 0);
-
-    // Toggle grass and rocks presence in the scene
-    ui.onToggleGrass = (enabled) => {
-      if (grass) {
-        if (enabled) {
-          grass.activate(scene);
-        } else {
-          grass.deactivate();
-        }
-      }
-      if (rocks) {
-        if (enabled && !scene.children.includes(rocks)) {
-          scene.add(rocks);
-        } else if (!enabled && scene.children.includes(rocks)) {
-          scene.remove(rocks);
-        }
-      }
-    };
-  },
-  undefined,
-  (e) => console.error(e),
-);
+// Charger le premier arbre
+loadTree(TREES[0]);
 
 // Boucle d'animation
 const clock = new THREE.Clock();
 function animate() {
-  stats.begin();
   wind.update(clock.getDelta());
   orbitController.update();
   renderer.render(scene, camera);
-  stats.end();
 }
 renderer.setAnimationLoop(animate);
 
